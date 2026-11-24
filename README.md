@@ -64,7 +64,7 @@ export PATH=$PARFLOW_DIR/bin:$PATH
 # 5. Make a Python environment and install the tools
 python3 -m venv ~/cee586-env
 source ~/cee586-env/bin/activate
-pip install -r requirements.txt
+pip install --prefer-binary -r requirements.txt
 pip install $PARFLOW_DIR/python        # pftools that matches this ParFlow
 
 # 6. Check, then start Jupyter
