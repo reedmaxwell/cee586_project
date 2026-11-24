@@ -30,14 +30,14 @@ physics in ParFlow 3.15, and the solver settings that ran fastest on it.
   scores kinematic-wave runs, but `evaluate.py` needs the diffusive flux formula that #777
   adds to `parflow.tools.hydrology` for `--overland` runs: configure ParFlow with
   `-DPARFLOW_ENABLE_PYTHON=TRUE`, build and install, then `pip install <prefix>/python`.
-- GitHub Codespaces: `.devcontainer/` builds HDF5, netCDF, Hypre and ParFlow from source,
-  ParFlow from the `east-river-2026` branch pinned to one commit, and installs the Python
-  packages.  The forcing download in `postCreateCommand` is the slow step (330 MB compressed).
+- GitHub Codespaces: the class container in the repository's `.devcontainer/` has ParFlow
+  from the `east-river-2026` branch and all the Python packages.  It does not include the
+  forcing.  Run `bash scripts/get_forcing.sh` once before the first run (330 MB compressed).
 
 ## Quick start
 
 ```bash
-git clone https://github.com/reedmaxwell/east_river_pfclm.git && cd east_river_pfclm
+cd part3_east_river                               # from the top of the class repository
 bash scripts/get_forcing.sh                       # the corrected WY2017 forcing, from the release assets
 python scripts/run_east_river.py                  # runs/er_wy2017/, hourly output, 5 min (laptop) to 11 min (Codespace)
 python scripts/evaluate.py runs/er_wy2017         # scores + figure in results/

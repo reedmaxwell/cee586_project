@@ -33,6 +33,11 @@ ap.add_argument("--overland", default="kinematic", choices=("kinematic", "diffus
                      "OverlandDiffusive boundary condition (dwe)")
 args = ap.parse_args()
 
+forcing_dir = os.path.abspath(args.forcing)
+if not (os.path.isdir(forcing_dir) and any(f.startswith("CW3E.") and f.endswith(".pfb") for f in os.listdir(forcing_dir))):
+    sys.exit(f"Forcing not found in {forcing_dir}.\nRun  bash scripts/get_forcing.sh  from part3_east_river/ first, "
+             f"or pass --forcing with the directory that holds the CW3E files.")
+
 rundir = os.path.join(ROOT, "runs", args.name)
 mkdir(rundir)
 for f in ("solidfile.pfsol", "pf_indicator.pfb", "slope_x.pfb", "slope_y.pfb", "mannings.pfb", "pf_flowbarrier.pfb"):
