@@ -1,5 +1,7 @@
 # CEE 586 project: from a soil column to a watershed
 
+**Students: open [START_HERE.md](START_HERE.md) for the step-by-step plan.**  This README covers setup options and background.
+
 Models and notebooks for the CEE 586 Physical Hydrology project.  You will follow water from the land surface into the subsurface and out of a watershed at three scales, all with ParFlow.
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/reedmaxwell/cee586_project)
@@ -10,7 +12,7 @@ Models and notebooks for the CEE 586 Physical Hydrology project.  You will follo
 | `part2_hillslope/` | 2 | The hillslope runoff-generation notebook, with movies of each run |
 | `part3_east_river/` | 3 | The East River ParFlow-CLM model for Water Year 2017, with observations and scoring |
 | `assignment/` | | The project assignment |
-| `my_work/` | | Your working folder.  Git ignores everything in it. |
+| `my_work/` | | A place for your own scripts, figures and write-up.  Git ignores everything in it. |
 
 All three parts run on one ParFlow build, so you need to set up only once.
 
@@ -94,7 +96,7 @@ On Windows PowerShell use `${PWD}` in place of `"$PWD"`.  Open the link that Jup
 
 ## How to work
 
-- Copy a notebook into `my_work/` before you change it, and run it from there or in place.  Keeping the originals untouched lets you pull updates.
+- Run the notebooks where they are.  They find their inputs by relative paths, so a copy in another folder will not run.  Keep your own scripts, figures and write-up in `my_work/`.
 - To get updates posted after you started: `git pull` from the repository folder.
 - Every run writes to its own folder (`runs/` or `overland_hillslope_runs/`).  These folders are not tracked by git.
 
