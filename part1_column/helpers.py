@@ -1,0 +1,234 @@
+"""
+Utility functions for single-column PF-CLM notebooks.
+
+File-format helpers and reference data that users shouldn't need to modify.
+All simulation logic, metrics, and plotting live inline in the notebooks.
+"""
+
+import re
+from pathlib import Path
+
+# =============================================================================
+# IGBP Land Cover Type Tables
+# =============================================================================
+IGBP_NAMES = {
+    1: "ENF",   2: "EBF",   3: "DNF",   4: "DBF",   5: "MF",
+    6: "CSH",   7: "OSH",   8: "WSA",   9: "SAV",  10: "GRA",
+    11: "WET",  12: "CRO",  13: "URB",  14: "MOS",  15: "SNO",
+    16: "BSV",  17: "WAT",  18: "BAR",
+}
+
+IGBP_FULL_NAMES = {
+    1: "Evergreen Needleleaf Forest",  2: "Evergreen Broadleaf Forest",
+    3: "Deciduous Needleleaf Forest",  4: "Deciduous Broadleaf Forest",
+    5: "Mixed Forest",                 6: "Closed Shrubland",
+    7: "Open Shrubland",               8: "Woody Savanna",
+    9: "Savanna",                      10: "Grassland",
+    11: "Permanent Wetland",           12: "Cropland",
+    13: "Urban",                       14: "Cropland/Natural Mosaic",
+    15: "Snow and Ice",                16: "Barren",
+    17: "Water",                       18: "Bare Soil",
+}
+
+IGBP_STR_TO_INT = {v: k for k, v in IGBP_NAMES.items()}
+
+# =============================================================================
+# CONUS2.1 Soil Hydraulic Properties (Table 3)
+# Keys: pf_indicator value (1-13)
+# Values: (name, ksat [m/h], porosity, vg_alpha [1/m], vg_n, sres)
+# =============================================================================
+CONUS2_SOILS = {
+    1:  ("Sand",            0.087, 0.375, 3.548, 4.162, 0.0001),
+    2:  ("Loamy Sand",      0.055, 0.390, 3.467, 2.738, 0.0001),
+    3:  ("Sandy Loam",      0.031, 0.387, 2.692, 2.445, 0.0001),
+    4:  ("Silt Loam",       0.019, 0.439, 0.501, 2.659, 0.0001),
+    5:  ("Silt",            0.042, 0.489, 0.661, 2.659, 0.0001),
+    6:  ("Loam",            0.014, 0.399, 1.122, 2.479, 0.0001),
+    7:  ("Sandy Clay Loam", 0.016, 0.384, 2.089, 2.318, 0.0001),
+    8:  ("Silty Clay Loam", 0.020, 0.482, 0.832, 2.514, 0.0001),
+    9:  ("Clay Loam",       0.025, 0.442, 1.585, 2.413, 0.0001),
+    10: ("Sandy Clay",      0.079, 0.385, 3.311, 2.202, 0.0001),
+    11: ("Silty Clay",      0.081, 0.481, 1.622, 2.318, 0.0001),
+    12: ("Clay",            0.045, 0.459, 1.514, 2.259, 0.0001),
+    13: ("Organic",         0.014, 0.399, 1.122, 2.479, 0.0001),
+}
+
+# =============================================================================
+# CONUS2.1 Bedrock & Geology Hydraulic Properties (Table 4)
+# Keys: pf_indicator value (19-28)
+# Values: (name, ksat [m/h], porosity, vg_alpha [1/m], vg_n, sres)
+# =============================================================================
+CONUS2_GEOLOGY = {
+    # VG alpha=0.5, n=2.5, sres=0.0001 are the CONUS2.1 domain defaults
+    # (geology types do not have per-type VG params in CONUS2.1)
+    # Ksat and porosity are per-type; VG params use domain defaults
+    19: ("Low-K bedrock",           0.005, 0.05, 0.5, 2.5, 0.0001),
+    20: ("Medium-K bedrock",        0.010, 0.10, 0.5, 2.5, 0.0001),
+    21: ("Unconsolidated sediments", 0.020, 0.12, 0.5, 2.5, 0.0001),
+    22: ("Semiconsolidated sed.",    0.030, 0.30, 0.5, 2.5, 0.0001),
+    23: ("Metamorphic rocks",        0.040, 0.01, 0.5, 2.5, 0.0001),
+    24: ("Sedimentary rocks",        0.050, 0.15, 0.5, 2.5, 0.0001),
+    25: ("Mixed sedimentary",        0.060, 0.22, 0.5, 2.5, 0.0001),
+    26: ("Carbonate rocks",          0.080, 0.27, 0.5, 2.5, 0.0001),
+    27: ("Volcanic rocks",           0.100, 0.06, 0.5, 2.5, 0.0001),
+    28: ("Fractured crystalline",    0.200, 0.30, 0.5, 2.5, 0.0001),
+}
+
+# Combined lookup for any pf_indicator value
+CONUS2_SUBSURFACE = {**CONUS2_SOILS, **CONUS2_GEOLOGY}
+
+# =============================================================================
+# SNOTEL Site Catalog (for snow/ notebooks)
+# Subset of low-bias site-years from the snow_model_sensitivity study.
+# triplet is the NRCS/HydroData site identifier (e.g. "679:WA:SNTL").
+# =============================================================================
+SNOTEL_SITES = {
+    # Cascades (maritime, heavy snowfall)
+    "Paradise":          {"coords": (46.79, -121.74), "elev_m": 1564, "state": "WA",
+                          "region": "Cascades",         "triplet": "679:WA:SNTL"},
+    "Stevens_Pass":      {"coords": (47.74, -121.09), "elev_m": 1241, "state": "WA",
+                          "region": "Cascades",         "triplet": "791:WA:SNTL"},
+    # Sierra Nevada
+    "CSS_Lab":           {"coords": (39.31, -120.37), "elev_m": 2103, "state": "CA",
+                          "region": "Sierra Nevada",    "triplet": "428:CA:SNTL"},
+    "Leavitt_Lake":      {"coords": (38.28, -119.56), "elev_m": 2987, "state": "CA",
+                          "region": "Sierra Nevada",    "triplet": "518:CA:SNTL"},
+    "Donner_Summit":     {"coords": (39.32, -120.33), "elev_m": 2103, "state": "CA",
+                          "region": "Sierra Nevada",    "triplet": "428:CA:SNTL"},
+    # Wyoming (continental)
+    "Togwotee_Pass":     {"coords": (43.76, -110.07), "elev_m": 2936, "state": "WY",
+                          "region": "Wyoming",          "triplet": "822:WY:SNTL"},
+    "Canyon":            {"coords": (44.73, -110.50), "elev_m": 2438, "state": "WY",
+                          "region": "Wyoming",          "triplet": "384:WY:SNTL"},
+    # Colorado Rockies
+    "Berthoud_Summit":   {"coords": (39.80, -105.78), "elev_m": 3536, "state": "CO",
+                          "region": "Colorado Rockies", "triplet": "335:CO:SNTL"},
+    "Schofield_Pass":    {"coords": (39.02, -107.05), "elev_m": 3261, "state": "CO",
+                          "region": "Colorado Rockies", "triplet": "737:CO:SNTL"},
+    # Wasatch / Utah
+    "Brighton":          {"coords": (40.60, -111.58), "elev_m": 2667, "state": "UT",
+                          "region": "Wasatch",          "triplet": "366:UT:SNTL"},
+    # Southern Rockies / arid
+    "Quemazon":          {"coords": (35.93, -106.40), "elev_m": 2926, "state": "NM",
+                          "region": "Southern Rockies", "triplet": "708:NM:SNTL"},
+    # Northern Rockies
+    "Northeast_Entrance":{"coords": (45.00, -109.93), "elev_m": 2286, "state": "MT",
+                          "region": "Northern Rockies", "triplet": "656:MT:SNTL"},
+}
+
+# Showcase subset — geographically diverse, recent CW3E-covered water years.
+# Default WY choices come from the snow_model_sensitivity low-bias pool.
+SNOTEL_SHOWCASE = [
+    ("Paradise",         2022),
+    ("CSS_Lab",          2022),
+    ("Togwotee_Pass",    2020),
+    ("Berthoud_Summit",  2024),
+    ("Brighton",         2024),
+    ("Quemazon",         2023),
+]
+
+
+def write_site_config(filepath, params):
+    """Write site parameters to a text file for passing between notebooks.
+
+    Parameters
+    ----------
+    filepath : str or Path
+        Output path (e.g. 'runs/US_Slt_WY2012/site_config.txt').
+    params : dict
+        Key-value pairs to write.
+    """
+    with open(filepath, "w") as f:
+        f.write("# Site configuration — generated by Notebook 1\n")
+        f.write("# Edit any values before running Notebook 2\n\n")
+        for key, value in params.items():
+            if key.startswith("_comment"):
+                f.write(f"\n# {value}\n")
+            else:
+                f.write(f"{key:<20s} {value}\n")
+
+
+def read_site_config(filepath):
+    """Read site parameters from a text file.
+
+    Returns dict of string key → string value. Caller converts types.
+    """
+    params = {}
+    with open(filepath, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split(None, 1)
+            if len(parts) == 2:
+                params[parts[0]] = parts[1]
+    return params
+
+
+def build_vegm(filepath, lat, lon, sand, clay, color, igbp):
+    """Write a single-column drv_vegm.dat file.
+
+    Parameters
+    ----------
+    filepath : str or Path
+        Output path for drv_vegm.dat.
+    lat, lon : float
+        Site coordinates.
+    sand, clay : float
+        Sand and clay fractions (0-1 scale, e.g. 0.58 for 58%).
+    color : int
+        Soil color index (1-20).
+    igbp : int
+        IGBP land cover type (1-18).
+    """
+    fracs = ["0.0"] * 18
+    fracs[igbp - 1] = "1.0"
+
+    header1 = (" x  y  lat    lon    sand clay color  fractional coverage of "
+               "grid by vegetation class (Must/Should Add to 1.0)")
+    header2 = ("       (Deg)\t (Deg)  (%/100)   index  "
+               "1    2    3    4    5    6    7    8    9    "
+               "10   11   12   13   14   15   16   17   18")
+    frac_str = "  ".join(fracs)
+    data_line = (f"   1   1   {lat:.3f} {lon:.3f}  {sand:.2f} {clay:.3f}"
+                 f"   {color}   {frac_str}")
+
+    with open(filepath, "w") as f:
+        f.write(header1 + "\n")
+        f.write(header2 + "\n")
+        f.write(data_line + "\n")
+
+
+def patch_clmin_dates(template_path, output_path, water_year):
+    """Copy drv_clmin template and patch date fields for the target water year.
+
+    Parameters
+    ----------
+    template_path : str or Path
+        Path to drv_clmin_template.dat.
+    output_path : str or Path
+        Where to write the patched drv_clmin.dat.
+    water_year : int
+        The water year (e.g. 2012). Start = Oct 1 of WY-1, end = Oct 1 of WY.
+    """
+    with open(template_path, "r") as f:
+        content = f.read()
+
+    wy = water_year
+    replacements = {
+        "syr": str(wy - 1),
+        "smo": "10",
+        "sda": "01",
+        "shr": "00",
+        "eyr": str(wy),
+        "emo": "10",
+        "eda": "01",
+        "ehr": "00",
+    }
+    for field, value in replacements.items():
+        pattern = rf"^({field}\s+)\S+(.*)$"
+        content = re.sub(pattern, rf"\g<1>{value}\2", content,
+                         count=1, flags=re.MULTILINE)
+
+    with open(output_path, "w") as f:
+        f.write(content)

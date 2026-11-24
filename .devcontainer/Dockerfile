@@ -1,0 +1,280 @@
+# CEE 586 project container: ParFlow-CLM (east-river-2026) with the Python tools.
+#
+# Two stages.  "builder" is the East River container recipe unchanged: it compiles
+# HDF5, NetCDF, Hypre and ParFlow from source.  "runtime" starts from a clean base
+# and copies in only the installed software, so the published image does not carry
+# the source and build trees.
+#
+#   docker build -f .devcontainer/Dockerfile -t cee586 .                    # runtime (default)
+#   docker build -f .devcontainer/Dockerfile --target builder -t cee586 .   # the original single-stage result
+
+ARG BASE_IMAGE=ubuntu:24.04
+FROM ${BASE_IMAGE} AS builder
+
+SHELL ["/bin/bash", "+o", "pipefail", "-c"]
+
+# Non interactive mode
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Fetch the latest definitions of packages
+RUN apt-get update && \
+    ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime && \
+    apt-get install -y tzdata && \
+    dpkg-reconfigure --frontend noninteractive tzdata && \
+    apt-get install -y \
+        build-essential \
+        curl \
+        libcurl4 \
+        git \
+        vim \
+        gfortran \
+        libopenblas-dev \
+        liblapack-dev \
+        openssh-client \
+        openssh-server \
+        openmpi-bin \
+        libopenmpi-dev \
+        python3 \
+        python3-pip \
+        python3-venv \
+        tcl-dev \
+        tk-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN getent group ubuntu >/dev/null || groupadd -g 1000 ubuntu && \
+    id -u ubuntu >/dev/null 2>&1 || useradd -u 1000 -g ubuntu -m -N -s /bin/bash ubuntu
+
+USER ubuntu
+WORKDIR /home/ubuntu/
+ENV BASE_PATH=/home/ubuntu/
+
+RUN mkdir -p                              \
+    $BASE_PATH/parflow/build               \
+    $BASE_PATH/parflow/dependencies/cmake   \
+    $BASE_PATH/parflow/dependencies/silo-src \
+    $BASE_PATH/parflow/dependencies/hdf5-src  \
+    $BASE_PATH/parflow/dependencies/hypre-src  \
+    $BASE_PATH/parflow/dependencies/netcdf-src
+
+# -----------------------------------------------------------------------------
+# Setup CMake
+# -----------------------------------------------------------------------------
+
+ARG CMAKE_URL=https://cmake.org/files/v3.29/cmake-3.29.0-linux-x86_64.tar.gz
+
+RUN cd $BASE_PATH/parflow/dependencies/cmake && \
+    curl -L $CMAKE_URL | tar --strip-components=1 -xzv
+
+ENV CMAKE=$BASE_PATH/parflow/dependencies/cmake/bin/cmake
+ENV CTEST=$BASE_PATH/parflow/dependencies/cmake/bin/ctest
+
+# -----------------------------------------------------------------------------
+# Install HDF5
+# -----------------------------------------------------------------------------
+# HDF5 1.12.0 configure defaults to a debug build (assertions, -Og, call
+# instrumentation) unless build mode is set.
+
+ARG HDF5_URL=https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.12/hdf5-1.12.0/src/hdf5-1.12.0.tar.gz
+
+ENV HDF5_DIR=/opt/hdf5
+
+WORKDIR $BASE_PATH/parflow/dependencies/hdf5-src
+RUN curl -L $HDF5_URL | tar --strip-components=1 -xzv && \
+    CC=mpicc ./configure \
+      --prefix=$HDF5_DIR \
+      --enable-parallel \
+      --enable-build-mode=production && \
+    make
+
+USER root
+RUN make install
+USER ubuntu
+
+# -----------------------------------------------------------------------------
+# Install NetCDF
+# -----------------------------------------------------------------------------
+
+ARG NETCDF_URL=https://github.com/Unidata/netcdf-c/archive/v4.7.4.tar.gz
+
+ENV NETCDF_DIR=/opt/netcdf
+
+WORKDIR $BASE_PATH/parflow/dependencies/netcdf-src
+RUN curl -L $NETCDF_URL | tar --strip-components=1 -xzv && \
+    CC=mpicc CPPFLAGS=-I$HDF5_DIR/include LDFLAGS=-L$HDF5_DIR/lib \
+    ./configure --disable-shared --disable-dap --prefix=${NETCDF_DIR} && \
+    make
+
+USER root
+RUN make install
+USER ubuntu
+
+# -----------------------------------------------------------------------------
+# Install Hypre
+# -----------------------------------------------------------------------------
+
+ARG HYPRE_VERSION=v2.19.0
+
+ENV HYPRE_DIR=/opt/hypre
+
+WORKDIR $BASE_PATH/parflow/dependencies/hypre-src
+RUN git clone https://github.com/hypre-space/hypre.git --single-branch --branch $HYPRE_VERSION
+
+WORKDIR $BASE_PATH/parflow/dependencies/hypre-src/hypre/src
+RUN ./configure --prefix=$HYPRE_DIR --with-MPI
+
+USER root
+RUN make install
+USER ubuntu
+
+# -----------------------------------------------------------------------------
+# Install Parflow
+# -----------------------------------------------------------------------------
+
+# The deck needs code that is not in a ParFlow release yet: the saturation lookup
+# table (PR #723), the diffusive wave options for OverlandKinematic (PR #777),
+# the CLM dry-canopy fix (PR #775), the Solver.CLM.VonKarman key (PR #769) and
+# the NetCDF writer fsync fix (PR #779).  east-river-2026 on reedmaxwell/parflow
+# is parflow/master plus those five, pinned to a commit so every rebuild
+# compiles the same source.
+ARG PARFLOW_REPO=https://github.com/reedmaxwell/parflow.git
+ARG PARFLOW_BRANCH=east-river-2026
+ARG PARFLOW_COMMIT=1a084a5b1fe1711c0b8333f65f70539dc143b013
+
+RUN git clone -b $PARFLOW_BRANCH --depth 1 --single-branch \
+    $PARFLOW_REPO $BASE_PATH/parflow/src && \
+    cd $BASE_PATH/parflow/src && \
+    git fetch --depth 1 origin $PARFLOW_COMMIT && \
+    git checkout --quiet $PARFLOW_COMMIT
+
+# pftools (the Python package, with the key schema and the hydrology module that
+# match this ParFlow source) is generated by the build when PARFLOW_ENABLE_PYTHON
+# is on.  The build makes a virtual environment at <install prefix>/py-env for
+# that and skips the step when the environment already exists, so it is made
+# here first with the generator's requirements; that avoids a dev-tool pin
+# (gersemi) that needs a Rust compiler to build from source.
+USER root
+RUN mkdir -p /opt/parflow && \
+    python3 -m venv /opt/parflow/py-env && \
+    /opt/parflow/py-env/bin/pip install --no-cache-dir --upgrade pip wheel setuptools && \
+    /opt/parflow/py-env/bin/pip install --no-cache-dir -r $BASE_PATH/parflow/src/pftools/python/requirements_all.txt
+USER ubuntu
+
+RUN $CMAKE                     \
+    -S $BASE_PATH/parflow/src   \
+    -B $BASE_PATH/parflow/build  \
+    -D CMAKE_BUILD_TYPE=Release   \
+    -D CMAKE_INSTALL_PREFIX=/opt/parflow \
+    -D PARFLOW_ENABLE_PYTHON=TRUE  \
+    -D Python3_EXECUTABLE=/usr/bin/python3 \
+    -D HDF5_ROOT=$HDF5_DIR         \
+    -D PARFLOW_ENABLE_HDF5=TRUE     \
+    -D HYPRE_ROOT=$HYPRE_DIR         \
+    -D PARFLOW_ENABLE_HYPRE=TRUE      \
+    -D PARFLOW_HAVE_CLM=TRUE             \
+    -D PARFLOW_ENABLE_TIMING=TRUE          \
+    -D PARFLOW_AMPS_LAYER=mpi1              \
+    -D PARFLOW_AMPS_SEQUENTIAL_IO=TRUE       \
+    -D PARFLOW_ENABLE_NETCDF=TRUE             \
+    -D NETCDF_DIR=$NETCDF_DIR                  \
+    -D CMAKE_EXE_LINKER_FLAGS="-Wl,--no-as-needed -L$HDF5_DIR/lib -lhdf5_hl -lhdf5 -ldl -lz -lm -lmvec" \
+    -D CURL_LIBRARY=/usr/lib/x86_64-linux-gnu/libcurl.so.4
+
+USER root
+ENV HOME=/root
+RUN $CMAKE --build $BASE_PATH/parflow/build
+RUN $CMAKE --install $BASE_PATH/parflow/build --prefix /opt/parflow
+# pip builds the pftools wheel in place and writes pftools.egg-info into the
+# source tree, so the installed copy must be writable by the user that runs pip.
+RUN chown -R ubuntu:ubuntu /opt/parflow/python
+USER ubuntu
+ENV HOME=/home/ubuntu
+
+# -----------------------------------------------------------------------------
+# Python virtual environment for notebooks/utilities
+# -----------------------------------------------------------------------------
+
+ENV VIRTUAL_ENV=/home/ubuntu/.venv
+RUN python3 -m venv "$VIRTUAL_ENV" && \
+    "$VIRTUAL_ENV/bin/pip" install --upgrade pip setuptools wheel && \
+    "$VIRTUAL_ENV/bin/pip" install \
+      "subsettools>=2.0.1" \
+      "hf_hydrodata>=1.4.3" \
+      "matplotlib>=3.7.2" \
+      "priority_flow>=1.0.1" \
+      "bokeh>=3.3.0" \
+      numpy \
+      pandas \
+      xarray \
+      netCDF4 \
+      jupyter \
+      ipykernel && \
+    "$VIRTUAL_ENV/bin/pip" install --no-cache-dir /opt/parflow/python
+# The last line installs pftools generated from this ParFlow source (the install
+# step copies it to /opt/parflow/python) in place of the PyPI release, so the key
+# schema and parflow.tools.hydrology match the build: evaluate.py needs the
+# OverlandKinematicDiffusive flux formula from PR #777 for --overland runs.
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+ENV PARFLOW_DIR=/opt/parflow/
+ENV LD_LIBRARY_PATH=/opt/hdf5/lib:/opt/netcdf/lib:/opt/parflow/lib:/opt/hypre/lib:/usr/include:$LD_LIBRARY_PATH
+WORKDIR /home/ubuntu/
+
+# =============================================================================
+# Runtime stage: the same system packages, plus the installed software only
+# =============================================================================
+FROM ${BASE_IMAGE} AS runtime
+
+SHELL ["/bin/bash", "+o", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+
+# The package list matches the builder stage so every shared library the build
+# linked against is present.  sudo is added for convenience in the dev container.
+RUN apt-get update && \
+    ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime && \
+    apt-get install -y tzdata && \
+    dpkg-reconfigure --frontend noninteractive tzdata && \
+    apt-get install -y \
+        build-essential \
+        curl \
+        libcurl4 \
+        git \
+        vim \
+        gfortran \
+        libopenblas-dev \
+        liblapack-dev \
+        openssh-client \
+        openssh-server \
+        openmpi-bin \
+        libopenmpi-dev \
+        python3 \
+        python3-pip \
+        python3-venv \
+        sudo \
+        tcl-dev \
+        tk-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN getent group ubuntu >/dev/null || groupadd -g 1000 ubuntu && \
+    id -u ubuntu >/dev/null 2>&1 || useradd -u 1000 -g ubuntu -m -N -s /bin/bash ubuntu
+RUN echo "ubuntu ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu && \
+    chmod 0440 /etc/sudoers.d/ubuntu
+
+# Installed software: HDF5, NetCDF, Hypre and ParFlow (with its generated pftools source)
+COPY --from=builder /opt/hdf5 /opt/hdf5
+COPY --from=builder /opt/netcdf /opt/netcdf
+COPY --from=builder /opt/hypre /opt/hypre
+COPY --from=builder --chown=ubuntu:ubuntu /opt/parflow /opt/parflow
+
+# The notebook environment, at the same path it was created in
+COPY --from=builder --chown=ubuntu:ubuntu /home/ubuntu/.venv /home/ubuntu/.venv
+
+USER ubuntu
+ENV HOME=/home/ubuntu
+ENV VIRTUAL_ENV=/home/ubuntu/.venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+ENV PARFLOW_DIR=/opt/parflow/
+ENV LD_LIBRARY_PATH=/opt/hdf5/lib:/opt/netcdf/lib:/opt/parflow/lib:/opt/hypre/lib
+WORKDIR /home/ubuntu/
+
+# Fail the build here, and not in a student's codespace, if the copy left something out
+RUN $PARFLOW_DIR/bin/parflow -v && python -c "import parflow, xarray, netCDF4, subsettools, hf_hydrodata; print('python tools ok')"

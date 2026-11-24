@@ -1,0 +1,68 @@
+# Builds the class container once and publishes it to the GitHub container registry.
+# Codespaces, local Docker and the cluster then pull the finished image and compile nothing.
+#
+# Run it by hand from the Actions tab (Run workflow), or let it run when the
+# Dockerfile changes on main.  The first build compiles HDF5, NetCDF, Hypre and
+# ParFlow and takes roughly an hour.  Later builds reuse cached layers.
+name: Build container image
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Dockerfile stage to publish (runtime is the slim image; builder is the original single-stage result)"
+        type: choice
+        options: [runtime, builder]
+        default: runtime
+  push:
+    branches: [main]
+    paths:
+      - ".devcontainer/Dockerfile"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-image
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image name (registry names must be lower case)
+        id: img
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .devcontainer/Dockerfile
+          target: ${{ inputs.target || 'runtime' }}
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.img.outputs.name }}:latest
+            ${{ steps.img.outputs.name }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=ParFlow-CLM (east-river-2026) and Python tools for the CEE 586 project
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          echo "Published ${{ steps.img.outputs.name }}:latest" >> "$GITHUB_STEP_SUMMARY"
+          echo "Set the package to public once (repo page > Packages > Package settings > Change visibility) so students can pull it without logging in." >> "$GITHUB_STEP_SUMMARY"

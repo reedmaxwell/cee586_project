@@ -1,0 +1,35 @@
+# student work: copy notebooks here and run them here
+my_work/*
+!my_work/.gitkeep
+
+# Python and Jupyter
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# ParFlow run directories and output
+runs/
+overland_hillslope_runs/
+output/
+*.pfidb
+*.pfb.dist
+*.dist
+*.silo
+*.nc
+*.log
+*.out.*
+
+# single column: generated forcing and site files
+part1_column/**/forcing1D.*.txt
+part1_column/**/site_config.txt
+
+# East River: downloaded forcing and daily tables written by the evaluation
+part3_east_river/inputs/forcing/
+part3_east_river/results/*_daily.csv
+*.tar.gz
+
+# local ParFlow binary for the Mac route
+install/
+
+.DS_Store

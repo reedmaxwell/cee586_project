@@ -1,0 +1,15 @@
+# Python packages for running the project outside the container (Mac binary route).
+# pftools is NOT listed: install it from the ParFlow you downloaded so it matches the build:
+#     pip install $PARFLOW_DIR/python
+subsettools>=2.0.1
+hf_hydrodata>=1.4.3
+matplotlib>=3.7.2
+priority_flow>=1.0.1
+bokeh>=3.3.0
+numpy
+pandas
+xarray
+netCDF4
+pillow
+jupyter
+ipykernel

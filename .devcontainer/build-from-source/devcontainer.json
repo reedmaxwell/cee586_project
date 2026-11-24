@@ -1,0 +1,21 @@
+{
+    "name": "CEE 586 project (build from source, slow)",
+    "build": {
+        "dockerfile": "../Dockerfile",
+        "context": "../.."
+    },
+    "otherPortsAttributes": {
+        "onAutoForward": "ignore"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ms-toolsai.jupyter"
+            ]
+        }
+    },
+    "postCreateCommand": "python -m ipykernel install --user --name subsetting-shortcourse --display-name \"Python (PFCLM)\"",
+    "remoteUser": "ubuntu"
+}
