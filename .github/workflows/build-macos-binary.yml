@@ -60,7 +60,7 @@ jobs:
       id: cache-deps
       with:
         path: "~/depend"
-        key: class-macos-15-netcdf-c4.9.0-netcdf-f4.5.4-hypre2.33.0
+        key: class-macos-15-netcdf-c4.10.0-netcdf-f4.6.1-hypre2.33.0
 
     - name: Directory Setup
       run: |
@@ -75,7 +75,7 @@ jobs:
         CACHE_HIT: ${{ steps.cache-deps.outputs.cache-hit }}
       run: |
         if [[ "$CACHE_HIT" != 'true' ]]; then
-          URL=https://github.com/Unidata/netcdf-c/archive/v4.9.0.tar.gz
+          URL=https://github.com/Unidata/netcdf-c/archive/v4.10.0.tar.gz
           mkdir netcdf-c && cd netcdf-c
           curl -L $URL | tar --strip-components=1 -xz
           CC=mpicc CPPFLAGS=-I/opt/homebrew/include LDFLAGS=-L/opt/homebrew/lib/ \
@@ -83,7 +83,7 @@ jobs:
           make -j 3 && make install
           cd ..
 
-          URL=https://github.com/Unidata/netcdf-fortran/archive/v4.5.4.tar.gz
+          URL=https://github.com/Unidata/netcdf-fortran/archive/v4.6.1.tar.gz
           mkdir netcdf-fortran && cd netcdf-fortran
           curl -L $URL | tar --strip-components=1 -xz
           CC=mpicc FC=mpifort \
