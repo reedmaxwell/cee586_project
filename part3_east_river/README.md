@@ -137,7 +137,7 @@ Codespaces container give the same scores to three decimals.
 | SWE, Schofield Pass SNOTEL 737 [mm], melt season | +5 | 203 | 0.95 | 0.84 | 0.70 |
 | ET, Pumphouse tower [mm/day], 15 Apr to 30 Sep | -0.04 | 0.79 | 0.76 | 0.55 | 0.75 |
 
-`results/er_wy2017_evaluation.png` shows the four series.  The observed peak at Almont is
+`results/reference/er_wy2017_evaluation.png` shows the four series.  The observed peak at Almont is
 72 m3/s and the model's 65; the annual mean is 11.9 against 13.2 m3/s.  Schofield Pass melts
 out about three weeks late and peaks 20 % low: the pillow sits in a clearing and its model
 cell is forest, so part of that is representativeness, not error.  Butte melts out within a
@@ -173,7 +173,8 @@ formats costs three times the I/O of either, so pick one.
 
 `scripts/evaluate.py` scores streamflow at the gages, SWE at the two pillows, and ET at the
 tower with the conventions in its docstring (local days, the gage's CONUS2 cell, melt-season
-window), and writes `results/<name>_scores.csv` and a four-panel figure.  It reads the run's
+window), and writes `results/<name>_scores.csv` and a four-panel figure.  The reference
+scores and figure for the shipped run are in `results/reference/`; compare yours with them.  It reads the run's
 `.pfidb` to pick the overland flux formula that matches the scheme the run used, and prints
 which one; an `OverlandDiffusive` run is scored with the friction-slope implicit formula,
 the closest pftools has, and the label says so.

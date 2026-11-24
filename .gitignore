@@ -24,9 +24,11 @@ output/
 part1_column/**/forcing1D.*.txt
 part1_column/**/site_config.txt
 
-# East River: downloaded forcing and daily tables written by the evaluation
+# East River: downloaded forcing and everything the evaluation writes.
+# The shipped reference scores and figure are in results/reference/.
 part3_east_river/inputs/forcing/
-part3_east_river/results/*_daily.csv
+part3_east_river/results/*
+!part3_east_river/results/reference/
 *.tar.gz
 
 # local ParFlow binary for the Mac route

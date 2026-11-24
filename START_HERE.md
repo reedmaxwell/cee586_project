@@ -75,6 +75,8 @@ python scripts/run_east_river.py                               # full water year
 python scripts/evaluate.py runs/er_wy2017                      # scores against streamflow, SWE and ET
 ```
 
+- [ ] Your scores and figure land in `results/`.  Compare them with the reference run in `results/reference/er_wy2017_scores.csv`.  They should match to the third decimal.
+
 - [ ] `get_forcing.sh` must finish first.  If it has not, the run script stops with `Forcing not found`.
 - [ ] For question 3.4, add `--name` to keep each experiment in its own folder, for example `--overland diffusive --name er_diffusive`.
 
